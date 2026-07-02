@@ -163,4 +163,29 @@ public class OrderItemDAOImpl implements OrderItemDAO {
 
         return 0;
     }
+
+    // FETCH ORDER ITEMS BY ORDER ID
+    @Override
+    public List<OrderItem> getOrderItemsByOrderId(int orderId) {
+        List<OrderItem> list = new ArrayList<>();
+        String query = "SELECT * FROM orderitem WHERE orderId=?";
+        try {
+            PreparedStatement ps = con.prepareStatement(query);
+            ps.setInt(1, orderId);
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                OrderItem item = new OrderItem(
+                    rs.getInt("orderItemId"),
+                    rs.getInt("orderId"),
+                    rs.getInt("quantity"),
+                    rs.getDouble("itemTotal"),
+                    rs.getInt("menuId")
+                );
+                list.add(item);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return list;
+    }
 }

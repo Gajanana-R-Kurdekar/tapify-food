@@ -82,6 +82,12 @@ public class MenuDAOImpl implements MenuDAO {
         return null;
     }
 
+    // FETCH SINGLE MENU (COMPATIBILITY)
+    @Override
+    public Menu getMenu(int menuId) {
+        return getMenuById(menuId);
+    }
+
     // FETCH ALL MENUS
     @Override
     public List<Menu> getAllMenus() {

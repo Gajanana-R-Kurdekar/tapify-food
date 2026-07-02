@@ -1,6 +1,17 @@
 <%@ page language="java" contentType="text/html; charset=UTF-8" pageEncoding="UTF-8" isELIgnored="true"%>
 <%@ page import="java.util.List" %>
 <%@ page import="com.instafood.model.Restaurant" %>
+<%@ page import="com.instafood.model.Cart" %>
+<%@ page import="com.instafood.model.CartItem" %>
+<%
+Cart sessionCart = (Cart) session.getAttribute("cart");
+int cartQuantity = 0;
+if (sessionCart != null) {
+    for (CartItem item : sessionCart.getItems().values()) {
+        cartQuantity += item.getQuantity();
+    }
+}
+%>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1196,11 +1207,14 @@ footer {
             <ul class="nav-links">
                 <li><a href="home.html"><i class="fa-solid fa-house"></i> <span>Home</span></a></li>
                 <li><a href="home" class="active"><i class="fa-solid fa-utensils"></i> <span>Restaurants</span></a></li>
+                <% if (loggedUser != null) { %>
+                <li><a href="orderHistory"><i class="fa-solid fa-clock-rotate-left"></i> <span>Orders</span></a></li>
+                <% } %>
                 <li class="cart-nav-item">
-                    <a href="cart.html" class="cart-icon-container">
+                    <a href="cart.jsp" class="cart-icon-container">
                         <i class="fa-solid fa-bag-shopping"></i>
                         <span>Cart</span>
-                        <span class="cart-badge" style="display: none;">0</span>
+                        <span class="cart-badge" style="<%= cartQuantity > 0 ? "" : "display: none;" %>"><%= cartQuantity %></span>
                     </a>
                 </li>
             </ul>
@@ -1521,7 +1535,7 @@ let activeFilters = {
 
 // Filter and Sort Engine
 function applyFiltersAndSort() {
-    const cards = document.querySelectorAll('#restaurant-grid .card');
+    const cards = document.querySelectorAll('#restaurant-grid .restaurant-card-link');
     let visibleCount = 0;
     
     cards.forEach(card => {

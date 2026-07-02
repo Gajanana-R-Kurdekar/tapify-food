@@ -25,7 +25,7 @@ public class OrderTableDAOImpl implements OrderTableDAO {
         try {
 
             PreparedStatement ps =
-                    con.prepareStatement(query);
+                    con.prepareStatement(query, java.sql.Statement.RETURN_GENERATED_KEYS);
 
             ps.setInt(1, order.getUserId());
             ps.setTimestamp(2, order.getOrderDate());
@@ -34,7 +34,16 @@ public class OrderTableDAOImpl implements OrderTableDAO {
             ps.setString(5, order.getPaymentMethod());
             ps.setInt(6, order.getRestaurantId());
 
-            return ps.executeUpdate();
+            int affectedRows = ps.executeUpdate();
+            if (affectedRows > 0) {
+                java.sql.ResultSet rs = ps.getGeneratedKeys();
+                if (rs.next()) {
+                    int generatedId = rs.getInt(1);
+                    order.setOrderId(generatedId);
+                    return generatedId;
+                }
+            }
+            return affectedRows;
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -170,5 +179,32 @@ public class OrderTableDAOImpl implements OrderTableDAO {
         }
 
         return 0;
+    }
+
+    // FETCH ORDERS BY USER ID
+    @Override
+    public List<OrderTable> getOrdersByUserId(int userId) {
+        List<OrderTable> orders = new ArrayList<>();
+        String query = "SELECT * FROM ordertable WHERE userId=? ORDER BY orderDate DESC";
+        try {
+            PreparedStatement ps = con.prepareStatement(query);
+            ps.setInt(1, userId);
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                OrderTable order = new OrderTable(
+                    rs.getInt("orderId"),
+                    rs.getInt("userId"),
+                    rs.getTimestamp("orderDate"),
+                    rs.getDouble("totalAmount"),
+                    rs.getString("status"),
+                    rs.getString("paymentMethod"),
+                    rs.getInt("restaurantId")
+                );
+                orders.add(order);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return orders;
     }
 }

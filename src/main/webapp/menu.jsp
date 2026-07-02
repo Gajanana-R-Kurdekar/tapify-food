@@ -2,9 +2,29 @@
 <%@ page import="java.util.List" %>
 <%@ page import="com.instafood.model.Restaurant" %>
 <%@ page import="com.instafood.model.Menu" %>
+<%@ page import="com.instafood.model.Cart" %>
+<%@ page import="com.instafood.model.CartItem" %>
 <%
 Restaurant restaurant = (Restaurant) request.getAttribute("restaurant");
 List<Menu> menuList = (List<Menu>) request.getAttribute("menuList");
+
+Cart sessionCart = (Cart) session.getAttribute("cart");
+int cartQuantity = 0;
+double cartSubtotal = 0.0;
+StringBuilder cartItemsJson = new StringBuilder("{");
+if (sessionCart != null) {
+    boolean first = true;
+    for (CartItem item : sessionCart.getItems().values()) {
+        cartQuantity += item.getQuantity();
+        cartSubtotal += item.getTotalPrice();
+        if (!first) {
+            cartItemsJson.append(",");
+        }
+        cartItemsJson.append(item.getMenuId()).append(":").append(item.getQuantity());
+        first = false;
+    }
+}
+cartItemsJson.append("}");
 %>
 <!DOCTYPE html>
 <html lang="en">
@@ -991,6 +1011,47 @@ footer {
             color: #ef9a9a !important;
             text-shadow: 0 0 10px rgba(239, 83, 80, 0.3);
         }
+
+        /* Toast Notification */
+        .toast-container {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            pointer-events: none;
+        }
+
+        .toast {
+            background-color: var(--bg-tertiary);
+            border-left: 4px solid var(--accent-orange);
+            color: var(--text-primary);
+            padding: 1rem 1.5rem;
+            border-radius: 8px;
+            font-family: var(--font-body);
+            font-weight: 500;
+            font-size: 0.95rem;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            pointer-events: auto;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .toast-icon {
+            color: var(--accent-orange);
+            font-size: 1.1rem;
+        }
     </style>
 </head>
 <body>
@@ -1027,11 +1088,14 @@ footer {
             <ul class="nav-links">
                 <li><a href="home.html"><i class="fa-solid fa-house"></i> <span>Home</span></a></li>
                 <li><a href="home" class="active"><i class="fa-solid fa-utensils"></i> <span>Restaurants</span></a></li>
+                <% if (loggedUser != null) { %>
+                <li><a href="orderHistory"><i class="fa-solid fa-clock-rotate-left"></i> <span>Orders</span></a></li>
+                <% } %>
                 <li class="cart-nav-item">
-                    <a href="cart.html" class="cart-icon-container">
+                    <a href="cart.jsp" class="cart-icon-container">
                         <i class="fa-solid fa-bag-shopping"></i>
                         <span>Cart</span>
-                        <span class="cart-badge" style="display: none;">0</span>
+                        <span class="cart-badge" style="<%= cartQuantity > 0 ? "" : "display: none;" %>"><%= cartQuantity %></span>
                     </a>
                 </li>
             </ul>
@@ -1108,12 +1172,12 @@ footer {
     </div>
 
     <!-- Floating bottom drawer (Visible only when items are added) -->
-    <div class="cart-drawer" id="cart-drawer">
+    <div class="cart-drawer <%= cartQuantity > 0 ? "visible" : "" %>" id="cart-drawer">
         <div class="drawer-info">
-            <h4 id="drawer-item-count">0 items</h4>
-            <p>Plus taxes & delivery charges | Subtotal: <span id="drawer-subtotal">₹0</span></p>
+            <h4 id="drawer-item-count"><%= cartQuantity %> item<%= cartQuantity > 1 ? "s" : "" %></h4>
+            <p>Plus taxes & delivery charges | Subtotal: <span id="drawer-subtotal">₹<%= (int) cartSubtotal %></span></p>
         </div>
-        <a href="cart.html" class="btn-view-cart">
+        <a href="cart.jsp" class="btn-view-cart">
             <span>View Cart</span>
             <i class="fa-solid fa-arrow-right"></i>
         </a>
@@ -1425,9 +1489,7 @@ function renderMenu(dishes) {
         card.className = `dish-card ${!dish.isAvailable ? 'out-of-stock' : ''}`;
         
         // Check quantity in cart
-        const cart = CartManager.getCart();
-        const cartItem = cart.items.find(item => item.menuId === dish.menuId);
-        const qty = cartItem ? cartItem.quantity : 0;
+        const qty = currentCartState.items[dish.menuId] || 0;
         
         let actionBtnHtml = '';
         if (!dish.isAvailable) {
@@ -1464,36 +1526,120 @@ function renderMenu(dishes) {
     container.appendChild(menuSection);
 }
 
-// Card Actions binding
+// Initialize cart state from server-side JSP values
+let currentCartState = {
+    quantity: <%= cartQuantity %>,
+    subtotal: <%= cartSubtotal %>,
+    items: <%= cartItemsJson.toString() %>
+};
+
+// Card Actions binding using AJAX background request
 window.addDishToCart = function(menuId) {
     const dish = mockDishes.find(d => d.menuId === menuId);
     if (!dish) return;
     
-    const success = CartManager.addItem(activeRestaurant.restaurantId, dish, 1);
-    if (success) {
-        renderMenu(filteredDishes);
-        updateCartDrawer();
-    }
+    // Perform background AJAX fetch to add item to server session
+    fetch(`cartServlet?action=add&menuId=${menuId}&quantity=1&restaurantId=${dish.restaurantId}&ajax=true`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                // Update client state
+                currentCartState.quantity = data.cartQuantity;
+                currentCartState.subtotal = data.cartSubtotal;
+                currentCartState.items = data.items;
+                
+                // Update header cart badge
+                const badge = document.querySelector('.cart-badge');
+                if (badge) {
+                    badge.textContent = data.cartQuantity;
+                    badge.style.display = data.cartQuantity > 0 ? 'inline-block' : 'none';
+                } else if (data.cartQuantity > 0) {
+                    const cartIcon = document.querySelector('.cart-icon-container');
+                    if (cartIcon) {
+                        const newBadge = document.createElement('span');
+                        newBadge.className = 'cart-badge';
+                        newBadge.textContent = data.cartQuantity;
+                        cartIcon.appendChild(newBadge);
+                    }
+                }
+                
+                // Re-render menu to update card quantities
+                renderMenu(filteredDishes);
+                
+                // Update floating drawer details
+                updateCartDrawer();
+            }
+        })
+        .catch(err => {
+            console.error('Error adding dish to cart:', err);
+            // Fallback: standard redirect
+            window.location.href = `cartServlet?action=add&menuId=${menuId}&quantity=1&restaurantId=${dish.restaurantId}`;
+        });
 };
 
 window.incrementDish = function(menuId) {
-    const cart = CartManager.getCart();
-    const item = cart.items.find(i => i.menuId === menuId);
-    if (item) {
-        CartManager.updateQuantity(menuId, item.quantity + 1);
-        renderMenu(filteredDishes);
-        updateCartDrawer();
-    }
+    const currentQty = currentCartState.items[menuId] || 0;
+    const newQty = currentQty + 1;
+    
+    fetch(`cartServlet?action=update&menuId=${menuId}&quantity=${newQty}&ajax=true`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                // Update client state
+                currentCartState.quantity = data.cartQuantity;
+                currentCartState.subtotal = data.cartSubtotal;
+                currentCartState.items = data.items;
+                
+                // Update header cart badge
+                const badge = document.querySelector('.cart-badge');
+                if (badge) {
+                    badge.textContent = data.cartQuantity;
+                    badge.style.display = data.cartQuantity > 0 ? 'inline-block' : 'none';
+                }
+                
+                // Re-render menu to update card quantities
+                renderMenu(filteredDishes);
+                
+                // Update floating drawer details
+                updateCartDrawer();
+            }
+        })
+        .catch(err => console.error('Error incrementing dish:', err));
 };
 
 window.decrementDish = function(menuId) {
-    const cart = CartManager.getCart();
-    const item = cart.items.find(i => i.menuId === menuId);
-    if (item) {
-        CartManager.updateQuantity(menuId, item.quantity - 1);
-        renderMenu(filteredDishes);
-        updateCartDrawer();
-    }
+    const currentQty = currentCartState.items[menuId] || 0;
+    const newQty = currentQty - 1;
+    
+    const action = newQty <= 0 ? 'delete' : 'update';
+    const url = action === 'delete' 
+        ? `cartServlet?action=delete&menuId=${menuId}&ajax=true` 
+        : `cartServlet?action=update&menuId=${menuId}&quantity=${newQty}&ajax=true`;
+        
+    fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                // Update client state
+                currentCartState.quantity = data.cartQuantity;
+                currentCartState.subtotal = data.cartSubtotal;
+                currentCartState.items = data.items;
+                
+                // Update header cart badge
+                const badge = document.querySelector('.cart-badge');
+                if (badge) {
+                    badge.textContent = data.cartQuantity;
+                    badge.style.display = data.cartQuantity > 0 ? 'inline-block' : 'none';
+                }
+                
+                // Re-render menu to update card quantities
+                renderMenu(filteredDishes);
+                
+                // Update floating drawer details
+                updateCartDrawer();
+            }
+        })
+        .catch(err => console.error('Error decrementing dish:', err));
 };
 
 // Cart Drawer Updates
@@ -1502,16 +1648,12 @@ function updateCartDrawer() {
     const drawerCount = document.getElementById('drawer-item-count');
     const drawerSubtotal = document.getElementById('drawer-subtotal');
     
-    const cart = CartManager.getCart();
-    const totalItems = cart.items.reduce((sum, item) => sum + item.quantity, 0);
-    const subtotal = cart.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-    
-    // Render floating drawer bar
+    // Render floating drawer bar based on current session cart state
     if (drawer) {
-        if (totalItems > 0) {
+        if (currentCartState.quantity > 0) {
             drawer.classList.add('visible');
-            if (drawerCount) drawerCount.textContent = `${totalItems} item${totalItems > 1 ? 's' : ''}`;
-            if (drawerSubtotal) drawerSubtotal.textContent = formatPrice(subtotal);
+            if (drawerCount) drawerCount.textContent = `${currentCartState.quantity} item${currentCartState.quantity > 1 ? 's' : ''}`;
+            if (drawerSubtotal) drawerSubtotal.textContent = `₹${Math.round(currentCartState.subtotal)}`;
         } else {
             drawer.classList.remove('visible');
         }
@@ -1523,12 +1665,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // Render list (info is pre-rendered by JSP)
     renderMenu(filteredDishes);
     updateCartDrawer();
-    
-    // Listen to global cart events (updates from header etc)
-    window.addEventListener('cartUpdated', () => {
-        updateCartDrawer();
-        renderMenu(filteredDishes);
-    });
 });
 
 </script>

@@ -20,4 +20,7 @@ public interface OrderTableDAO {
 
     // DELETE ORDER
     int deleteOrder(int id);
+
+    // FETCH ORDERS BY USER ID
+    List<OrderTable> getOrdersByUserId(int userId);
 }

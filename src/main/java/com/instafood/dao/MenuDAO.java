@@ -12,6 +12,9 @@ public interface MenuDAO {
     // FETCH SINGLE MENU
     Menu getMenuById(int id);
 
+    // FETCH SINGLE MENU (COMPATIBILITY)
+    Menu getMenu(int menuId);
+
     // FETCH ALL MENUS
     List<Menu> getAllMenus();
 
